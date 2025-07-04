@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIT EECE Chatbot</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for Inter font and general layout */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 768px; /* Max width for desktop */
+            height: 90vh; /* Occupy most of the viewport height */
+            background-color: white;
+            border-radius: 1.5rem; /* More rounded corners */
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            padding: 1rem; /* Padding around the container */
+        }
+        .chat-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem; /* Space between messages */
+            scroll-behavior: smooth;
+        }
+        .message-bubble {
+            max-width: 80%;
+            padding: 0.75rem 1rem;
+            border-radius: 1.25rem; /* Rounded message bubbles */
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #3B82F6; /* Blue for user messages */
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 0.5rem; /* Slightly less rounded on one corner */
+        }
+        .bot-message {
+            background-color: #E5E7EB; /* Light gray for bot messages */
+            color: #374151; /* Darker text for bot */
+            align-self: flex-start;
+            border-bottom-left-radius: 0.5rem; /* Slightly less rounded on one corner */
+        }
+        .message-info {
+            font-size: 0.75rem; /* Smaller text for timestamp */
+            color: #6B7280; /* Gray text */
+            margin-top: 0.25rem;
+        }
+        .user-message .message-info {
+            text-align: right;
+            color: #DBEAFE; /* Lighter gray for user timestamp */
+        }
+        .bot-message .message-info {
+            text-align: left;
+        }
+        .chat-input-area {
+            display: flex;
+            padding: 1rem;
+            gap: 0.75rem; /* Space between input and button */
+            border-top: 1px solid #E5E7EB; /* Separator line */
+        }
+        .chat-input {
+            flex-grow: 1;
+            padding: 0.75rem 1rem;
+            border-radius: 1.5rem; /* Rounded input field */
+            border: 1px solid #D1D5DB;
+            outline: none;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        .chat-input:focus {
+            border-color: #3B82F6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+        .send-button {
+            background-color: #22C55E; /* Green send button */
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 1.5rem;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .send-button:hover {
+            background-color: #16A34A;
+            transform: translateY(-1px);
+        }
+        .send-button:active {
+            transform: translateY(0);
+        }
+        .send-button:disabled {
+            background-color: #9CA3AF;
+            cursor: not-allowed;
+        }
+        .loading-indicator {
+            display: none; /* Hidden by default */
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: #6B7280;
+            text-align: center;
+        }
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .chat-container {
+                height: 100vh; /* Full height on smaller screens */
+                border-radius: 0; /* No rounded corners on full screen */
+                padding: 0.5rem;
+            }
+            .chat-messages {
+                padding: 0.5rem;
+            }
+            .chat-input-area {
+                padding: 0.5rem;
+                flex-direction: column; /* Stack input and button on small screens */
+                gap: 0.5rem;
+            }
+            .send-button {
+                width: 100%; /* Full width button */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h1 class="text-2xl font-bold text-center text-gray-800 mb-4">MIT EECE Chatbot</h1>
+        <div id="chat-messages" class="chat-messages">
+            <!-- Messages will be loaded here by JavaScript -->
+            {% for message in chat_history %}
+                <div class="message-bubble {% if message.sender == 'user' %}user-message{% else %}bot-message{% endif %}">
+                    {{ message.message }}
+                    <div class="message-info">
+                        {{ message.timestamp }}
+                        {% if message.sender == 'bot' and message.response_time %}
+                            ({{ message.response_time }})
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="user-input" class="chat-input" placeholder="Ask about MIT EECE courses...">
+            <button id="send-button" class="send-button">Send</button>
+        </div>
+        <div id="loading-indicator" class="loading-indicator">Bot is typing...</div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chat-messages');
+        const userInput = document.getElementById('user-input');
+        const sendButton = document.getElementById('send-button');
+        const loadingIndicator = document.getElementById('loading-indicator');
+
+        // Function to scroll to the bottom of the chat
+        function scrollToBottom() {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // Function to add a message to the chat display
+        function addMessage(sender, message, timestamp, responseTime = null) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message-bubble');
+            if (sender === 'user') {
+                messageDiv.classList.add('user-message');
+            } else {
+                messageDiv.classList.add('bot-message');
+            }
+            messageDiv.innerHTML = `
+                ${message}
+                <div class="message-info">
+                    ${timestamp}
+                    ${responseTime ? ` (${responseTime})` : ''}
+                </div>
+            `;
+            chatMessages.appendChild(messageDiv);
+            scrollToBottom();
+            return messageDiv; // Return the created div for potential updates
+        }
+
+        // Initial scroll to bottom when page loads with existing history
+        document.addEventListener('DOMContentLoaded', scrollToBottom);
+
+        // Event listener for the send button
+        sendButton.addEventListener('click', sendMessage);
+
+        // Event listener for Enter key in the input field
+        userInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !sendButton.disabled) {
+                sendMessage();
+            }
+        });
+
+        async function sendMessage() {
+            const message = userInput.value.trim();
+            if (!message) return;
+
+            // Disable input and button, show loading indicator
+            userInput.value = ''; // Clear input immediately
+            userInput.disabled = true;
+            sendButton.disabled = true;
+            loadingIndicator.style.display = 'block';
+
+            const userTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            addMessage('user', message, userTimestamp);
+
+            // Create a placeholder for the bot's message to stream into
+            // We'll update its content as chunks arrive.
+            // The timestamp will be updated to the bot's response time after completion.
+            const botMessageDiv = addMessage('bot', '', userTimestamp);
+            let fullBotResponse = '';
+
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message }),
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let done = false;
+
+                while (!done) {
+                    const { value, done: readerDone } = await reader.read();
+                    done = readerDone;
+                    const chunk = decoder.decode(value, { stream: true });
+                    fullBotResponse += chunk;
+
+                    // Update the bot's message bubble with the new chunk
+                    // Preserve the message-info div structure
+                    const infoDiv = botMessageDiv.querySelector('.message-info');
+                    botMessageDiv.innerHTML = fullBotResponse.replace(/\n/g, '<br>');;
+                    if (infoDiv) {
+                        botMessageDiv.appendChild(infoDiv); // Re-append the info div
+                    }
+                    scrollToBottom();
+                }
+
+                // After streaming, the server-side session update will have the final timestamp and response_time.
+                // We'll rely on the next page load or a dedicated refresh to show the exact response time.
+                // For a real-time update of response time without a full refresh, you'd need the server
+                // to send the final metadata as part of the stream or a separate quick API call.
+                // For this setup, the response time is correctly saved in the session.
+
+            } catch (error) {
+                console.error('Error:', error);
+                const errorTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const infoDiv = botMessageDiv.querySelector('.message-info');
+                botMessageDiv.innerHTML = `Error: ${error.message}`;
+                if (infoDiv) {
+                    botMessageDiv.appendChild(infoDiv);
+                    infoDiv.innerHTML = errorTimestamp; // Update timestamp for error
+                }
+                scrollToBottom();
+            } finally {
+                // Re-enable input and button, hide loading indicator
+                userInput.disabled = false;
+                sendButton.disabled = false;
+                loadingIndicator.style.display = 'none';
+                userInput.focus(); // Focus back on the input field
+            }
+        }
+    </script>
+</body>
+</html>
