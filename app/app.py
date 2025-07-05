@@ -244,15 +244,9 @@ Answer:"""
 #-----------------------------------------------------------------------------------------
 
 app = Flask(__name__)
-# Set a secret key for session management.
-# In a production environment, use a strong, randomly generated key
-# and store it securely (e.g., in an environment variable).
 app.secret_key = os.urandom(24)
 
-# Initialize your bot globally or within the app context.
-# Make sure 'data/Cleaned_EECE.csv' is in the correct path relative to app.py
 try:
-    # This line assumes MITCourseRAG is defined or imported.
     bot = MITCourseRAG(DATA_PATH, ollama_model=OLLAMA_MODEL)
     print("MITCourseRAG bot initialized successfully.")
 except NameError:
